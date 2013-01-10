@@ -13,34 +13,29 @@
 # limitations under the License.
 
 import datetime
-import logging
-import os
-import re
-import wsgiref.handlers
+
 from google.appengine.api import xmpp
-from google.appengine.api import users
 from google.appengine.ext import db
-from google.appengine.ext import webapp
-from google.appengine.ext.ereporter import report_generator
-from google.appengine.ext.webapp import template
 from google.appengine.ext.webapp import xmpp_handlers
+import webapp2
+from webapp2_extras import jinja2
 
 
-PONDER_MSG = "Hmm. Let me think on that a bit."
-TELLME_MSG = "While I'm thinking, perhaps you can answer me this: %s"
-SOMEONE_ANSWERED_MSG = ("We seek those who are wise and fast. One out of two "
-                        "is not enough. Another has answered my question.")
-ANSWER_INTRO_MSG = "You asked me: %s"
-ANSWER_MSG = "I have thought long and hard, and concluded: %s"
-WAIT_MSG = ("Please! One question at a time! You can ask me another once you "
-            "have an answer to your current question.")
-THANKS_MSG = "Thank you for your wisdom."
-TELLME_THANKS_MSG = ("Thank you for your wisdom."
-                     " I'm still thinking about your question.")
-EMPTYQ_MSG = "Sorry, I don't have anything to ask you at the moment."
-HELP_MSG = ("I am the amazing Crowd Guru. Ask me a question by typing '/tellme "
-            "the meaning of life', and I will answer you forthwith! To learn "
-            "more, go to %s/")
+PONDER_MSG = 'Hmm. Let me think on that a bit.'
+TELLME_MSG = 'While I\'m thinking, perhaps you can answer me this: %s'
+SOMEONE_ANSWERED_MSG = ('We seek those who are wise and fast. One out of two '
+                        'is not enough. Another has answered my question.')
+ANSWER_INTRO_MSG = 'You asked me: %s'
+ANSWER_MSG = 'I have thought long and hard, and concluded: %s'
+WAIT_MSG = ('Please! One question at a time! You can ask me another once you '
+            'have an answer to your current question.')
+THANKS_MSG = 'Thank you for your wisdom.'
+TELLME_THANKS_MSG = ('Thank you for your wisdom.'
+                     ' I\'m still thinking about your question.')
+EMPTYQ_MSG = 'Sorry, I don\'t have anything to ask you at the moment.'
+HELP_MSG = ('I am the amazing Crowd Guru. Ask me a question by typing '
+            '\'/tellme the meaning of life\', and I will answer you forthwith! '
+            'To learn more, go to %s/')
 MAX_ANSWER_TIME = 120
 
 
@@ -90,12 +85,13 @@ class Question(db.Model):
                 - datetime.timedelta(seconds=MAX_ANSWER_TIME))
 
       # Find a candidate question
-      q = Question.all()
-      q.filter("answerer =", None)
-      q.filter("last_assigned <", expiry).order("last_assigned")
+      query = Question.all()
+      query.filter('answerer =', None)
+      query.filter('last_assigned <', expiry).order('last_assigned')
       # If a question has never been assigned, order by when it was asked
-      q.order("asked")
-      candidates = [x for x in q.fetch(2) if x.asker != user]
+      query.order('asked')
+      candidates = [candidate for candidate in query.fetch(2)
+                    if candidate.asker != user]
       if not candidates:
         # No valid questions in queue.
         break
@@ -127,24 +123,24 @@ class XmppHandler(xmpp_handlers.CommandHandler):
 
   def _GetAsked(self, user):
     """Returns the user's outstanding asked question, if any."""
-    q = Question.all()
-    q.filter("asker =", user)
-    q.filter("answer =", None)
-    return q.get()
+    query = Question.all()
+    query.filter('asker =', user)
+    query.filter('answer =', None)
+    return query.get()
 
   def _GetAnswering(self, user):
     """Returns the question the user is answering, if any."""
-    q = Question.all()
-    q.filter("assignees =", user)
-    q.filter("answer =", None)
-    return q.get()
+    query = Question.all()
+    query.filter('assignees =', user)
+    query.filter('answer =', None)
+    return query.get()
 
   def unhandled_command(self, message=None):
     # Show help text
     message.reply(HELP_MSG % (self.request.host_url,))
 
   def askme_command(self, message=None):
-    im_from = db.IM("xmpp", message.sender)
+    im_from = db.IM('xmpp', message.sender)
     currently_answering = self._GetAnswering(im_from)
     question = Question.assignQuestion(im_from)
     if question:
@@ -156,7 +152,7 @@ class XmppHandler(xmpp_handlers.CommandHandler):
       currently_answering.unassign(im_from)
 
   def text_message(self, message=None):
-    im_from = db.IM("xmpp", message.sender)
+    im_from = db.IM('xmpp', message.sender)
     question = self._GetAnswering(im_from)
     if question:
       other_assignees = question.assignees
@@ -189,7 +185,7 @@ class XmppHandler(xmpp_handlers.CommandHandler):
       self.unhandled_command(message)
 
   def tellme_command(self, message=None):
-    im_from = db.IM("xmpp", message.sender)
+    im_from = db.IM('xmpp', message.sender)
     asked_question = self._GetAsked(im_from)
     currently_answering = self._GetAnswering(im_from)
 
@@ -210,28 +206,30 @@ class XmppHandler(xmpp_handlers.CommandHandler):
       message.reply(PONDER_MSG)
 
 
-class LatestHandler(webapp.RequestHandler):
+class LatestHandler(webapp2.RequestHandler):
   """Displays the most recently answered questions."""
 
-  def Render(self, template_file, template_values):
-    path = os.path.join(os.path.dirname(__file__), 'templates', template_file)
-    self.response.out.write(template.render(path, template_values))
+  @webapp2.cached_property
+  def Jinja2(self):
+    """Cached property holding a Jinja2 instance."""
+    return jinja2.get_jinja2(app=self.app)
+
+  def RenderResponse(self, template, **context):
+    """Use Jinja2 instance to render template and write to output.
+
+    Args:
+      template: filename (relative to $PROJECT/templates) that we are rendering
+      context: keyword arguments corresponding to variables in template
+    """
+    rendered_value = self.Jinja2.render_template(template, **context)
+    self.response.write(rendered_value)
 
   def get(self):
-    q = Question.all().order('-answered').filter('answered >', None)
-    template_values = {
-      'questions': q.fetch(20),
-    }
-    self.Render("latest.html", template_values)
+    query = Question.all().order('-answered').filter('answered >', None)
+    self.RenderResponse('latest.html', questions=query.fetch(20))
 
 
-def main():
-  app = webapp.WSGIApplication([
-      ('/', LatestHandler),
-      ('/_ah/xmpp/message/chat/', XmppHandler),
-      ], debug=True)
-  wsgiref.handlers.CGIHandler().run(app)
-
-
-if __name__ == '__main__':
-  main()
+application = webapp2.WSGIApplication([
+    ('/', LatestHandler),
+    ('/_ah/xmpp/message/chat/', XmppHandler),
+    ], debug=True)
