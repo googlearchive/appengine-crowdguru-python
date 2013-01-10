@@ -1,0 +1,14 @@
+application: crowdguru
+version: 1
+runtime: python
+api_version: 1
+
+handlers:
+- url: /static
+  static_dir: static
+- url: /.*
+  script: guru.py
+
+inbound_services:
+- xmpp_message
+

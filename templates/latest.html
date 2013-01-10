@@ -1,0 +1,32 @@
+<html>
+<head>
+  <title>Latest questions answered by the amazing Crowd Guru</title>
+  <link rel="stylesheet" type="text/css" href="/static/base.css" />
+</head>
+<body>
+  <h1>The Amazing Crowd Guru</h1>
+  <h2>What's this?</h2>
+  <p>The Amazing Crowd Guru is here to answer all your questions. Add
+  <em>crowdguru@appspot.com</em> to your Google talk or Jabber friend list, and
+  ask him a question by sending <em>/tellme &lt;question></em>. In return, he
+  might ask a small favor...</p>
+  <p>Available commands:</p>
+  <table>
+    <tr><th>/tellme <em>&lt;question></em></th><td>Ask the Amazing Crowd Guru a
+    question. If he asks you one back, respond by replying with your answer. If
+    you can't answer, don't - or send <em>/askme</em> for another question to
+    answer. </td></tr>
+    <tr><th>/askme</th><td>Have the Amazing Crowd Guru ask you a question. Answer
+    by replying to him.</td></tr>
+    <tr><th>/help</th><td>Display a quick rundown of available commands.</td></tr>
+  </table>
+  
+  <h2>Latest questions answered by the Amazing Crowd Guru</h2>
+  <dl>
+    {% for question in questions %}
+      <dt>{{question.question}}</dt>
+      <dd>{{question.answer}}</dd>
+    {% endfor %}
+  </dl>
+</body>
+</html>
