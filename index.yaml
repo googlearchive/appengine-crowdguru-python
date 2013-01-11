@@ -1,0 +1,6 @@
+indexes:
+- kind: Question
+  properties:
+  - name: answerer
+  - name: last_assigned
+  - name: asked
