@@ -16,6 +16,7 @@ import datetime
 
 from google.appengine.api import datastore_types
 from google.appengine.api import xmpp
+from google.appengine.datastore import entity_pb
 from google.appengine.ext import ndb
 from google.appengine.ext.webapp import xmpp_handlers
 import webapp2
@@ -39,7 +40,7 @@ HELP_MSG = ('I am the amazing Crowd Guru. Ask me a question by typing '
 MAX_ANSWER_TIME = 120
 
 
-class IMProperty(ndb.PickleProperty):
+class IMProperty(ndb.Property):
   """A custom property for handling IM objects."""
 
   def _validate(self, value):
@@ -55,18 +56,45 @@ class IMProperty(ndb.PickleProperty):
     if not isinstance(value, datastore_types.IM):
       raise TypeError('expected an IM, got {!r}'.format(value))
 
+  def _db_set_value(self, v, p, value):
+    """Method to customize the way the entity is sent to the datastore.
+
+    Sets the entity meaning to GD_IM and sets the string value to the string
+    value of the IM object. The constructor for IM is written in such a way that
+    IM(str(im_value)) == im_value and str_value == str(IM(str_value)).
+    """
+    v.set_stringvalue(str(value))
+    p.set_meaning(entity_pb.Property.GD_IM)
+
+  def _db_get_value(self, v, p):
+    """Method to customize the way the entity is built from the datastore.
+
+    Returns:
+      A datastore_types.IM instance built from the string in the datastore,
+        unless no string was stored, then returns None.
+
+    Raises:
+      ValueError: If the stored entity meaning is not GD_IM.
+    """
+    if not v.has_stringvalue():
+      return None
+    meaning = p.meaning()
+    if meaning != entity_pb.Property.GD_IM:
+      raise ValueError('Value stored not an IM.')
+    return datastore_types.IM(v.stringvalue())
+
 
 class Question(ndb.Model):
   """Model to hold questions that the Guru can answer."""
   question = ndb.TextProperty(required=True)
-  asker = IMProperty(required=True, indexed=True)
+  asker = IMProperty(required=True)
   asked = ndb.DateTimeProperty(required=True, auto_now_add=True)
 
-  assignees = IMProperty(repeated=True, indexed=True)
+  assignees = IMProperty(repeated=True)
   last_assigned = ndb.DateTimeProperty()
 
   answer = ndb.TextProperty(indexed=True)
-  answerer = IMProperty(indexed=True)
+  answerer = IMProperty()
   answered = ndb.DateTimeProperty()
 
   @classmethod
