@@ -9,7 +9,7 @@ handlers:
   static_dir: static
 
 - url: /.*
-  script: guru.application
+  script: guru.APPLICATION
 
 inbound_services:
 - xmpp_message

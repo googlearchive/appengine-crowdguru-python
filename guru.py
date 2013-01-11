@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Crowdguru sample application using the XMPP service on Google App Engine."""
+
+
 import datetime
 
 from google.appengine.api import datastore_types
@@ -40,6 +43,8 @@ HELP_MSG = ('I am the amazing Crowd Guru. Ask me a question by typing '
 MAX_ANSWER_TIME = 120
 
 
+# TODO(dhermes): Get this into NDB.
+# http://code.google.com/p/appengine-ndb-experiment/issues/detail?id=235
 class IMProperty(ndb.Property):
     """A custom property for handling IM objects."""
 
@@ -47,7 +52,7 @@ class IMProperty(ndb.Property):
         """Validator to make sure value is an instance of datastore_types.IM.
 
         Args:
-            value: The value to be validated. Shoudl be an instance of
+            value: The value to be validated. Should be an instance of
                 datastore_types.IM.
 
         Raises:
@@ -98,7 +103,7 @@ class Question(ndb.Model):
     answered = ndb.DateTimeProperty()
 
     @classmethod
-    def AssignQuestion(cls, user):
+    def assign_question(cls, user):
         """Gets an unanswered question and assigns it to a user to answer.
 
         Args:
@@ -126,14 +131,13 @@ class Question(ndb.Model):
                 break
 
             # Try and assign it
-            candidate = candidates[0]
-            question = _TryAssign(candidate.key, user, expiry)
+            question = _try_assign(candidates[0].key, user, expiry)
 
         # Expire the assignment after a couple of minutes
         return question
 
     @ndb.transactional
-    def Unassign(self, user):
+    def unassign(self, user):
         """Unassigns the given user from this question.
 
         Args:
@@ -147,7 +151,7 @@ class Question(ndb.Model):
 
 
 @ndb.transactional
-def _TryAssign(key, user, expiry):
+def _try_assign(key, user, expiry):
     """Assigns and returns the question if it's not assigned already.
 
     Args:
@@ -169,7 +173,7 @@ def _TryAssign(key, user, expiry):
 class XmppHandler(xmpp_handlers.CommandHandler):
     """Handler class for all XMPP activity."""
 
-    def _GetAsked(self, user):
+    def _get_asked(self, user):
         """Returns the user's outstanding asked question, if any.
 
         Args:
@@ -182,7 +186,7 @@ class XmppHandler(xmpp_handlers.CommandHandler):
         query = Question.query(Question.asker == user, Question.answer == None)
         return query.get()
 
-    def _GetAnswering(self, user):
+    def _get_answering(self, user):
         """Returns the question the user is answering, if any.
 
         Args:
@@ -211,15 +215,15 @@ class XmppHandler(xmpp_handlers.CommandHandler):
             message: xmpp.Message: The message that was sent by the user.
         """
         im_from = datastore_types.IM('xmpp', message.sender)
-        currently_answering = self._GetAnswering(im_from)
-        question = Question.AssignQuestion(im_from)
+        currently_answering = self._get_answering(im_from)
+        question = Question.assign_question(im_from)
         if question:
             message.reply(TELLME_MSG.format(question.question))
         else:
             message.reply(EMPTYQ_MSG)
         # Don't unassign their current question until we've picked a new one.
         if currently_answering:
-            currently_answering.Unassign(im_from)
+            currently_answering.unassign(im_from)
 
     def text_message(self, message=None):
         """Called when a message not prefixed by a /cmd is sent to the XMPP bot.
@@ -228,7 +232,7 @@ class XmppHandler(xmpp_handlers.CommandHandler):
             message: xmpp.Message: The message that was sent by the user.
         """
         im_from = datastore_types.IM('xmpp', message.sender)
-        question = self._GetAnswering(im_from)
+        question = self._get_answering(im_from)
         if question:
             other_assignees = question.assignees
             other_assignees.remove(im_from)
@@ -247,7 +251,7 @@ class XmppHandler(xmpp_handlers.CommandHandler):
                               ANSWER_MSG.format(message.arg))
 
             # Send acknowledgement to the answerer
-            asked_question = self._GetAsked(im_from)
+            asked_question = self._get_asked(im_from)
             if asked_question:
                 message.reply(TELLME_THANKS_MSG)
             else:
@@ -267,7 +271,7 @@ class XmppHandler(xmpp_handlers.CommandHandler):
             message: xmpp.Message: The message that was sent by the user.
         """
         im_from = datastore_types.IM('xmpp', message.sender)
-        asked_question = self._GetAsked(im_from)
+        asked_question = self._get_asked(im_from)
 
         if asked_question:
             # Already have a question
@@ -277,10 +281,10 @@ class XmppHandler(xmpp_handlers.CommandHandler):
             asked_question = Question(question=message.arg, asker=im_from)
             asked_question.put()
 
-            currently_answering = self._GetAnswering(im_from)
+            currently_answering = self._get_answering(im_from)
             if not currently_answering:
                 # Try and find one for them to answer
-                question = Question.AssignQuestion(im_from)
+                question = Question.assign_question(im_from)
                 if question:
                     message.reply(TELLME_MSG.format(question.question))
                     return
@@ -291,29 +295,29 @@ class LatestHandler(webapp2.RequestHandler):
     """Displays the most recently answered questions."""
 
     @webapp2.cached_property
-    def Jinja2(self):
+    def jinja2(self):
         """Cached property holding a Jinja2 instance."""
         return jinja2.get_jinja2(app=self.app)
 
-    def RenderResponse(self, template, **context):
+    def render_response(self, template, **context):
         """Use Jinja2 instance to render template and write to output.
 
         Args:
             template: filename (relative to $PROJECT/templates) that we are
-                rendering
-            context: keyword arguments corresponding to variables in template
+                rendering.
+            context: keyword arguments corresponding to variables in template.
         """
-        rendered_value = self.Jinja2.render_template(template, **context)
+        rendered_value = self.jinja2.render_template(template, **context)
         self.response.write(rendered_value)
 
     def get(self):
         """Handler for latest questions page."""
         query = Question.query(Question.answered > None).order(
                 -Question.answered)
-        self.RenderResponse('latest.html', questions=query.fetch(20))
+        self.render_response('latest.html', questions=query.fetch(20))
 
 
-application = webapp2.WSGIApplication([
+APPLICATION = webapp2.WSGIApplication([
     ('/', LatestHandler),
     ('/_ah/xmpp/message/chat/', XmppHandler),
     ], debug=True)
