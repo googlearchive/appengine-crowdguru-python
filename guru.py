@@ -149,6 +149,34 @@ class Question(ndb.Model):
             question.assignees.remove(user)
             question.put()
 
+    @classmethod
+    def get_asked(cls, user):
+        """Returns the user's outstanding asked question, if any.
+
+        Args:
+            user: datastore_types.IM: The identity of the user asking.
+
+        Returns:
+            An unanswered Question entity asked by the user, or None if there
+                are no unanswered questions.
+        """
+        query = cls.query(cls.asker == user, cls.answer == None)
+        return query.get()
+
+    @classmethod
+    def get_answering(cls, user):
+        """Returns the question the user is answering, if any.
+
+        Args:
+            user: datastore_types.IM: The identity of the user answering.
+
+        Returns:
+            An unanswered Question entity assigned to the user, or None if there
+                are no unanswered questions.
+        """
+        query = cls.query(cls.assignees == user, cls.answer == None)
+        return query.get()
+
 
 @ndb.transactional
 def _try_assign(key, user, expiry):
@@ -173,33 +201,6 @@ def _try_assign(key, user, expiry):
 class XmppHandler(xmpp_handlers.CommandHandler):
     """Handler class for all XMPP activity."""
 
-    def _get_asked(self, user):
-        """Returns the user's outstanding asked question, if any.
-
-        Args:
-            user: datastore_types.IM: The identity of the user asking.
-
-        Returns:
-            An unanswered Question entity asked by the user, or None if there
-                are no unanswered questions.
-        """
-        query = Question.query(Question.asker == user, Question.answer == None)
-        return query.get()
-
-    def _get_answering(self, user):
-        """Returns the question the user is answering, if any.
-
-        Args:
-            user: datastore_types.IM: The identity of the user answering.
-
-        Returns:
-            An unanswered Question entity assigned to the user, or None if there
-                are no unanswered questions.
-        """
-        query = Question.query(Question.assignees == user,
-                               Question.answer == None)
-        return query.get()
-
     def unhandled_command(self, message=None):
         """Shows help text for commands which have no handler.
 
@@ -215,7 +216,7 @@ class XmppHandler(xmpp_handlers.CommandHandler):
             message: xmpp.Message: The message that was sent by the user.
         """
         im_from = datastore_types.IM('xmpp', message.sender)
-        currently_answering = self._get_answering(im_from)
+        currently_answering = Question.get_answering(im_from)
         question = Question.assign_question(im_from)
         if question:
             message.reply(TELLME_MSG.format(question.question))
@@ -232,7 +233,7 @@ class XmppHandler(xmpp_handlers.CommandHandler):
             message: xmpp.Message: The message that was sent by the user.
         """
         im_from = datastore_types.IM('xmpp', message.sender)
-        question = self._get_answering(im_from)
+        question = Question.get_answering(im_from)
         if question:
             other_assignees = question.assignees
             other_assignees.remove(im_from)
@@ -251,7 +252,7 @@ class XmppHandler(xmpp_handlers.CommandHandler):
                               ANSWER_MSG.format(message.arg))
 
             # Send acknowledgement to the answerer
-            asked_question = self._get_asked(im_from)
+            asked_question = Question.get_asked(im_from)
             if asked_question:
                 message.reply(TELLME_THANKS_MSG)
             else:
@@ -271,7 +272,7 @@ class XmppHandler(xmpp_handlers.CommandHandler):
             message: xmpp.Message: The message that was sent by the user.
         """
         im_from = datastore_types.IM('xmpp', message.sender)
-        asked_question = self._get_asked(im_from)
+        asked_question = Question.get_asked(im_from)
 
         if asked_question:
             # Already have a question
@@ -281,7 +282,7 @@ class XmppHandler(xmpp_handlers.CommandHandler):
             asked_question = Question(question=message.arg, asker=im_from)
             asked_question.put()
 
-            currently_answering = self._get_answering(im_from)
+            currently_answering = Question.get_answering(im_from)
             if not currently_answering:
                 # Try and find one for them to answer
                 question = Question.assign_question(im_from)
