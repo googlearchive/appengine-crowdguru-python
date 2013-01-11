@@ -102,6 +102,26 @@ class Question(ndb.Model):
     answerer = IMProperty()
     answered = ndb.DateTimeProperty()
 
+    @staticmethod
+    @ndb.transactional
+    def _try_assign(key, user, expiry):
+        """Assigns and returns the question if it's not assigned already.
+
+        Args:
+            key: ndb.Key: The key of a Question to try and assign.
+            user: datastore_types.IM: The user to assign the question to.
+            expiry: datetime.datetime: The expiry date of the question.
+
+        Returns:
+            The Question object. If it was already assigned, no change is made.
+        """
+        question = key.get()
+        if not question.last_assigned or question.last_assigned < expiry:
+            question.assignees.append(user)
+            question.last_assigned = datetime.datetime.now()
+            question.put()
+        return question
+
     @classmethod
     def assign_question(cls, user):
         """Gets an unanswered question and assigns it to a user to answer.
@@ -131,7 +151,7 @@ class Question(ndb.Model):
                 break
 
             # Try and assign it
-            question = _try_assign(candidates[0].key, user, expiry)
+            question = cls._try_assign(candidates[0].key, user, expiry)
 
         # Expire the assignment after a couple of minutes
         return question
@@ -176,26 +196,6 @@ class Question(ndb.Model):
         """
         query = cls.query(cls.assignees == user, cls.answer == None)
         return query.get()
-
-
-@ndb.transactional
-def _try_assign(key, user, expiry):
-    """Assigns and returns the question if it's not assigned already.
-
-    Args:
-        key: ndb.Key: The key of a Question to try and assign.
-        user: datastore_types.IM: The user to assign the question to.
-        expiry: datetime.datetime: The expiry date of the question.
-
-    Returns:
-        The Question object. If it was already assigned, no change is made.
-    """
-    question = key.get()
-    if not question.last_assigned or question.last_assigned < expiry:
-        question.assignees.append(user)
-        question.last_assigned = datetime.datetime.now()
-        question.put()
-    return question
 
 
 class XmppHandler(xmpp_handlers.CommandHandler):
