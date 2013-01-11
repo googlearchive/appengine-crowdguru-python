@@ -41,273 +41,276 @@ MAX_ANSWER_TIME = 120
 
 
 class IMProperty(ndb.Property):
-  """A custom property for handling IM objects."""
+    """A custom property for handling IM objects."""
 
-  def _validate(self, value):
-    """Validator to make sure the value is an instance of datastore_types.IM.
+    def _validate(self, value):
+        """Validator to make sure value is an instance of datastore_types.IM.
 
-    Args:
-      value: The value to be validated. Shoudl be an instance of
-        datastore_types.IM.
+        Args:
+            value: The value to be validated. Shoudl be an instance of
+                datastore_types.IM.
 
-    Raises:
-      TypeError: If value is not an instance of datastore_types.IM.
-    """
-    if not isinstance(value, datastore_types.IM):
-      raise TypeError('expected an IM, got {!r}'.format(value))
+        Raises:
+            TypeError: If value is not an instance of datastore_types.IM.
+        """
+        if not isinstance(value, datastore_types.IM):
+            raise TypeError('expected an IM, got {!r}'.format(value))
 
-  def _db_set_value(self, v, p, value):
-    """Method to customize the way the entity is sent to the datastore.
+    def _db_set_value(self, v, p, value):
+        """Method to customize the way the entity is sent to the datastore.
 
-    Sets the entity meaning to GD_IM and sets the string value to the string
-    value of the IM object. The constructor for IM is written in such a way that
-    IM(str(im_value)) == im_value and str_value == str(IM(str_value)).
-    """
-    v.set_stringvalue(str(value))
-    p.set_meaning(entity_pb.Property.GD_IM)
+        Sets the entity meaning to GD_IM and sets the string value to the string
+        value of the IM object. The constructor for IM is written in such a way
+        that IM(str(im_value)) == im_value and str_value == str(IM(str_value)).
+        """
+        v.set_stringvalue(str(value))
+        p.set_meaning(entity_pb.Property.GD_IM)
 
-  def _db_get_value(self, v, p):
-    """Method to customize the way the entity is built from the datastore.
+    def _db_get_value(self, v, p):
+        """Method to customize the way the entity is built from the datastore.
 
-    Returns:
-      A datastore_types.IM instance built from the string in the datastore,
-        unless no string was stored, then returns None.
+        Returns:
+            A datastore_types.IM instance built from the string in the
+                datastore, unless no string was stored, then returns None.
 
-    Raises:
-      ValueError: If the stored entity meaning is not GD_IM.
-    """
-    if not v.has_stringvalue():
-      return None
-    meaning = p.meaning()
-    if meaning != entity_pb.Property.GD_IM:
-      raise ValueError('Value stored not an IM.')
-    return datastore_types.IM(v.stringvalue())
+        Raises:
+            ValueError: If the stored entity meaning is not GD_IM.
+        """
+        if not v.has_stringvalue():
+            return None
+        meaning = p.meaning()
+        if meaning != entity_pb.Property.GD_IM:
+            raise ValueError('Value stored not an IM.')
+        return datastore_types.IM(v.stringvalue())
 
 
 class Question(ndb.Model):
-  """Model to hold questions that the Guru can answer."""
-  question = ndb.TextProperty(required=True)
-  asker = IMProperty(required=True)
-  asked = ndb.DateTimeProperty(required=True, auto_now_add=True)
+    """Model to hold questions that the Guru can answer."""
+    question = ndb.TextProperty(required=True)
+    asker = IMProperty(required=True)
+    asked = ndb.DateTimeProperty(required=True, auto_now_add=True)
 
-  assignees = IMProperty(repeated=True)
-  last_assigned = ndb.DateTimeProperty()
+    assignees = IMProperty(repeated=True)
+    last_assigned = ndb.DateTimeProperty()
 
-  answer = ndb.TextProperty(indexed=True)
-  answerer = IMProperty()
-  answered = ndb.DateTimeProperty()
+    answer = ndb.TextProperty(indexed=True)
+    answerer = IMProperty()
+    answered = ndb.DateTimeProperty()
 
-  @classmethod
-  def AssignQuestion(cls, user):
-    """Gets an unanswered question and assigns it to a user to answer.
+    @classmethod
+    def AssignQuestion(cls, user):
+        """Gets an unanswered question and assigns it to a user to answer.
 
-    Args:
-      user: datastore_types.IM: The identity of the user to assign a
-        question to.
+        Args:
+            user: datastore_types.IM: The identity of the user to assign a
+                question to.
 
-    Returns:
-      The Question entity assigned to the user, or None if there are no
-        unanswered questions.
-    """
-    question = None
-    while question is None or user not in question.assignees:
-      # Assignments made before this timestamp have expired.
-      expiry = (datetime.datetime.now()
-                - datetime.timedelta(seconds=MAX_ANSWER_TIME))
+        Returns:
+            The Question entity assigned to the user, or None if there are no
+                unanswered questions.
+        """
+        question = None
+        while question is None or user not in question.assignees:
+            # Assignments made before this timestamp have expired.
+            expiry = (datetime.datetime.now()
+                      - datetime.timedelta(seconds=MAX_ANSWER_TIME))
 
-      # Find a candidate question
-      query = cls.query(cls.answerer == None, cls.last_assigned < expiry)
-      # If a question has never been assigned, order by when it was asked
-      query = query.order(cls.last_assigned, cls.asked)
-      candidates = [candidate for candidate in query.fetch(2)
-                    if candidate.asker != user]
-      if not candidates:
-        # No valid questions in queue.
-        break
+            # Find a candidate question
+            query = cls.query(cls.answerer == None, cls.last_assigned < expiry)
+            # If a question has never been assigned, order by when it was asked
+            query = query.order(cls.last_assigned, cls.asked)
+            candidates = [candidate for candidate in query.fetch(2)
+                          if candidate.asker != user]
+            if not candidates:
+                # No valid questions in queue.
+                break
 
-      # Try and assign it
-      candidate = candidates[0]
-      question = _TryAssign(candidate.key, user, expiry)
+            # Try and assign it
+            candidate = candidates[0]
+            question = _TryAssign(candidate.key, user, expiry)
 
-    # Expire the assignment after a couple of minutes
-    return question
+        # Expire the assignment after a couple of minutes
+        return question
 
-  @ndb.transactional
-  def Unassign(self, user):
-    """Unassigns the given user from this question.
+    @ndb.transactional
+    def Unassign(self, user):
+        """Unassigns the given user from this question.
 
-    Args:
-      user: datastore_types.IM: The user who will no longer be answering this
-        question.
-    """
-    question = self.key.get()
-    if user in question.assignees:
-      question.assignees.remove(user)
-      question.put()
+        Args:
+            user: datastore_types.IM: The user who will no longer be answering
+                this question.
+        """
+        question = self.key.get()
+        if user in question.assignees:
+            question.assignees.remove(user)
+            question.put()
 
 
 @ndb.transactional
 def _TryAssign(key, user, expiry):
-  """Assigns and returns the question if it's not assigned already.
+    """Assigns and returns the question if it's not assigned already.
 
-  Args:
-    key: ndb.Key: The key of a Question to try and assign.
-    user: datastore_types.IM: The user to assign the question to.
-    expiry: datetime.datetime: The expiry date of the question.
+    Args:
+        key: ndb.Key: The key of a Question to try and assign.
+        user: datastore_types.IM: The user to assign the question to.
+        expiry: datetime.datetime: The expiry date of the question.
 
-  Returns:
-    The Question object. If it was already assigned, no change is made.
-  """
-  question = key.get()
-  if not question.last_assigned or question.last_assigned < expiry:
-    question.assignees.append(user)
-    question.last_assigned = datetime.datetime.now()
-    question.put()
-  return question
+    Returns:
+        The Question object. If it was already assigned, no change is made.
+    """
+    question = key.get()
+    if not question.last_assigned or question.last_assigned < expiry:
+        question.assignees.append(user)
+        question.last_assigned = datetime.datetime.now()
+        question.put()
+    return question
 
 
 class XmppHandler(xmpp_handlers.CommandHandler):
-  """Handler class for all XMPP activity."""
+    """Handler class for all XMPP activity."""
 
-  def _GetAsked(self, user):
-    """Returns the user's outstanding asked question, if any.
+    def _GetAsked(self, user):
+        """Returns the user's outstanding asked question, if any.
 
-    Args:
-      user: datastore_types.IM: The identity of the user asking.
+        Args:
+            user: datastore_types.IM: The identity of the user asking.
 
-    Returns:
-      An unanswered Question entity asked by the user, or None if there are no
-        unanswered questions.
-    """
-    query = Question.query(Question.asker == user, Question.answer == None)
-    return query.get()
+        Returns:
+            An unanswered Question entity asked by the user, or None if there
+                are no unanswered questions.
+        """
+        query = Question.query(Question.asker == user, Question.answer == None)
+        return query.get()
 
-  def _GetAnswering(self, user):
-    """Returns the question the user is answering, if any.
+    def _GetAnswering(self, user):
+        """Returns the question the user is answering, if any.
 
-    Args:
-      user: datastore_types.IM: The identity of the user answering.
+        Args:
+            user: datastore_types.IM: The identity of the user answering.
 
-    Returns:
-      An unanswered Question entity assigned to the user, or None if there are
-        no unanswered questions.
-    """
-    query = Question.query(Question.assignees == user, Question.answer == None)
-    return query.get()
+        Returns:
+            An unanswered Question entity assigned to the user, or None if there
+                are no unanswered questions.
+        """
+        query = Question.query(Question.assignees == user,
+                               Question.answer == None)
+        return query.get()
 
-  def unhandled_command(self, message=None):
-    """Shows help text for commands which have no handler.
+    def unhandled_command(self, message=None):
+        """Shows help text for commands which have no handler.
 
-    Args:
-      message: xmpp.Message: The message that was sent by the user.
-    """
-    message.reply(HELP_MSG.format(self.request.host_url))
+        Args:
+            message: xmpp.Message: The message that was sent by the user.
+        """
+        message.reply(HELP_MSG.format(self.request.host_url))
 
-  def askme_command(self, message=None):
-    """Responds to the /askme command.
+    def askme_command(self, message=None):
+        """Responds to the /askme command.
 
-    Args:
-      message: xmpp.Message: The message that was sent by the user.
-    """
-    im_from = datastore_types.IM('xmpp', message.sender)
-    currently_answering = self._GetAnswering(im_from)
-    question = Question.AssignQuestion(im_from)
-    if question:
-      message.reply(TELLME_MSG.format(question.question))
-    else:
-      message.reply(EMPTYQ_MSG)
-    # Don't unassign their current question until we've picked a new one.
-    if currently_answering:
-      currently_answering.Unassign(im_from)
-
-  def text_message(self, message=None):
-    """Called when a message not prefixed by a /command is sent to the XMPP bot.
-
-    Args:
-      message: xmpp.Message: The message that was sent by the user.
-    """
-    im_from = datastore_types.IM('xmpp', message.sender)
-    question = self._GetAnswering(im_from)
-    if question:
-      other_assignees = question.assignees
-      other_assignees.remove(im_from)
-
-      # Answering a question
-      question.answer = message.arg
-      question.answerer = im_from
-      question.assignees = []
-      question.answered = datetime.datetime.now()
-      question.put()
-
-      # Send the answer to the asker
-      xmpp.send_message([question.asker.address],
-                        ANSWER_INTRO_MSG.format(question.question))
-      xmpp.send_message([question.asker.address],
-                        ANSWER_MSG.format(message.arg))
-
-      # Send acknowledgement to the answerer
-      asked_question = self._GetAsked(im_from)
-      if asked_question:
-        message.reply(TELLME_THANKS_MSG)
-      else:
-        message.reply(THANKS_MSG)
-
-      # Tell any other assignees their help is no longer required
-      if other_assignees:
-        xmpp.send_message([user.address for user in other_assignees],
-                          SOMEONE_ANSWERED_MSG)
-    else:
-      self.unhandled_command(message)
-
-  def tellme_command(self, message=None):
-    """Responds to the /tellme command.
-
-    Args:
-      message: xmpp.Message: The message that was sent by the user.
-    """
-    im_from = datastore_types.IM('xmpp', message.sender)
-    asked_question = self._GetAsked(im_from)
-
-    if asked_question:
-      # Already have a question
-      message.reply(WAIT_MSG)
-    else:
-      # Asking a question
-      asked_question = Question(question=message.arg, asker=im_from)
-      asked_question.put()
-
-      currently_answering = self._GetAnswering(im_from)
-      if not currently_answering:
-        # Try and find one for them to answer
+        Args:
+            message: xmpp.Message: The message that was sent by the user.
+        """
+        im_from = datastore_types.IM('xmpp', message.sender)
+        currently_answering = self._GetAnswering(im_from)
         question = Question.AssignQuestion(im_from)
         if question:
-          message.reply(TELLME_MSG.format(question.question))
-          return
-      message.reply(PONDER_MSG)
+            message.reply(TELLME_MSG.format(question.question))
+        else:
+            message.reply(EMPTYQ_MSG)
+        # Don't unassign their current question until we've picked a new one.
+        if currently_answering:
+            currently_answering.Unassign(im_from)
+
+    def text_message(self, message=None):
+        """Called when a message not prefixed by a /cmd is sent to the XMPP bot.
+
+        Args:
+            message: xmpp.Message: The message that was sent by the user.
+        """
+        im_from = datastore_types.IM('xmpp', message.sender)
+        question = self._GetAnswering(im_from)
+        if question:
+            other_assignees = question.assignees
+            other_assignees.remove(im_from)
+
+            # Answering a question
+            question.answer = message.arg
+            question.answerer = im_from
+            question.assignees = []
+            question.answered = datetime.datetime.now()
+            question.put()
+
+            # Send the answer to the asker
+            xmpp.send_message([question.asker.address],
+                              ANSWER_INTRO_MSG.format(question.question))
+            xmpp.send_message([question.asker.address],
+                              ANSWER_MSG.format(message.arg))
+
+            # Send acknowledgement to the answerer
+            asked_question = self._GetAsked(im_from)
+            if asked_question:
+                message.reply(TELLME_THANKS_MSG)
+            else:
+                message.reply(THANKS_MSG)
+
+            # Tell any other assignees their help is no longer required
+            if other_assignees:
+                xmpp.send_message([user.address for user in other_assignees],
+                                  SOMEONE_ANSWERED_MSG)
+        else:
+            self.unhandled_command(message)
+
+    def tellme_command(self, message=None):
+        """Responds to the /tellme command.
+
+        Args:
+            message: xmpp.Message: The message that was sent by the user.
+        """
+        im_from = datastore_types.IM('xmpp', message.sender)
+        asked_question = self._GetAsked(im_from)
+
+        if asked_question:
+            # Already have a question
+            message.reply(WAIT_MSG)
+        else:
+            # Asking a question
+            asked_question = Question(question=message.arg, asker=im_from)
+            asked_question.put()
+
+            currently_answering = self._GetAnswering(im_from)
+            if not currently_answering:
+                # Try and find one for them to answer
+                question = Question.AssignQuestion(im_from)
+                if question:
+                    message.reply(TELLME_MSG.format(question.question))
+                    return
+            message.reply(PONDER_MSG)
 
 
 class LatestHandler(webapp2.RequestHandler):
-  """Displays the most recently answered questions."""
+    """Displays the most recently answered questions."""
 
-  @webapp2.cached_property
-  def Jinja2(self):
-    """Cached property holding a Jinja2 instance."""
-    return jinja2.get_jinja2(app=self.app)
+    @webapp2.cached_property
+    def Jinja2(self):
+        """Cached property holding a Jinja2 instance."""
+        return jinja2.get_jinja2(app=self.app)
 
-  def RenderResponse(self, template, **context):
-    """Use Jinja2 instance to render template and write to output.
+    def RenderResponse(self, template, **context):
+        """Use Jinja2 instance to render template and write to output.
 
-    Args:
-      template: filename (relative to $PROJECT/templates) that we are rendering
-      context: keyword arguments corresponding to variables in template
-    """
-    rendered_value = self.Jinja2.render_template(template, **context)
-    self.response.write(rendered_value)
+        Args:
+            template: filename (relative to $PROJECT/templates) that we are
+                rendering
+            context: keyword arguments corresponding to variables in template
+        """
+        rendered_value = self.Jinja2.render_template(template, **context)
+        self.response.write(rendered_value)
 
-  def get(self):
-    """Handler for latest questions page."""
-    query = Question.query(Question.answered > None).order(-Question.answered)
-    self.RenderResponse('latest.html', questions=query.fetch(20))
+    def get(self):
+        """Handler for latest questions page."""
+        query = Question.query(Question.answered > None).order(
+                -Question.answered)
+        self.RenderResponse('latest.html', questions=query.fetch(20))
 
 
 application = webapp2.WSGIApplication([
