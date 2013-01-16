@@ -67,12 +67,21 @@ class IMProperty(ndb.Property):
         Sets the entity meaning to GD_IM and sets the string value to the string
         value of the IM object. The constructor for IM is written in such a way
         that IM(str(im_value)) == im_value and str_value == str(IM(str_value)).
+
+        Args:
+            v: Mutable value of Property Message object.
+            p: A Property Message object (a protocol buffer).
+            value: The value currently set for the IMProperty.
         """
         v.set_stringvalue(str(value))
         p.set_meaning(entity_pb.Property.GD_IM)
 
     def _db_get_value(self, v, p):
         """Method to customize the way the entity is built from the datastore.
+
+        Args:
+            v: Immutable value of Property Message object.
+            p: A Property Message object (a protocol buffer).
 
         Returns:
             A datastore_types.IM instance built from the string in the
@@ -297,7 +306,11 @@ class LatestHandler(webapp2.RequestHandler):
 
     @webapp2.cached_property
     def jinja2(self):
-        """Cached property holding a Jinja2 instance."""
+        """Cached property holding a Jinja2 instance.
+
+        Returns:
+            A Jinja2 object for the current app.
+        """
         return jinja2.get_jinja2(app=self.app)
 
     def render_response(self, template, **context):
@@ -319,6 +332,6 @@ class LatestHandler(webapp2.RequestHandler):
 
 
 APPLICATION = webapp2.WSGIApplication([
-    ('/', LatestHandler),
-    ('/_ah/xmpp/message/chat/', XmppHandler),
-    ], debug=True)
+        ('/', LatestHandler),
+        ('/_ah/xmpp/message/chat/', XmppHandler),
+        ], debug=True)
