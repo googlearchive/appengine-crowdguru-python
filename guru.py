@@ -103,6 +103,7 @@ class Question(ndb.Model):
     question = ndb.TextProperty(required=True)
     asker = IMProperty(required=True)
     asked = ndb.DateTimeProperty(required=True, auto_now_add=True)
+    suspended = ndb.BooleanProperty(required=True)
 
     assignees = IMProperty(repeated=True)
     last_assigned = ndb.DateTimeProperty()
@@ -224,7 +225,10 @@ class XmppHandler(xmpp_handlers.CommandHandler):
         Args:
             message: xmpp.Message: The message that was sent by the user.
         """
-        im_from = datastore_types.IM('xmpp', message.sender)
+        # Identify the user by bare jid
+        # (see http://wiki.xmpp.org/web/Jabber_Resources)
+        user = message.sender.split('/')[0]
+        im_from = datastore_types.IM('xmpp', user)
         currently_answering = Question.get_answering(im_from)
         question = Question.assign_question(im_from)
         if question:
@@ -241,7 +245,8 @@ class XmppHandler(xmpp_handlers.CommandHandler):
         Args:
             message: xmpp.Message: The message that was sent by the user.
         """
-        im_from = datastore_types.IM('xmpp', message.sender)
+        user = message.sender.split('/')[0]
+        im_from = datastore_types.IM('xmpp', user)
         question = Question.get_answering(im_from)
         if question:
             other_assignees = question.assignees
@@ -275,12 +280,13 @@ class XmppHandler(xmpp_handlers.CommandHandler):
             self.unhandled_command(message)
 
     def tellme_command(self, message=None):
-        """Responds to the /tellme command.
+        """Handles /tellme requests, asking the Guru a question.
 
         Args:
             message: xmpp.Message: The message that was sent by the user.
         """
-        im_from = datastore_types.IM('xmpp', message.sender)
+        user = message.sender.split('/')[0]
+        im_from = datastore_types.IM('xmpp', user)
         asked_question = Question.get_asked(im_from)
 
         if asked_question:
@@ -299,6 +305,28 @@ class XmppHandler(xmpp_handlers.CommandHandler):
                     message.reply(TELLME_MSG.format(question.question))
                     return
             message.reply(PONDER_MSG)
+
+
+class XmppPresenceHandler(webapp2.RequestHandler):
+    """Handler class for XMPP status updates."""
+
+    def post(self, available):
+        """POST handler for XMPP presence.
+
+        Args:
+            available: A string which will be either available or unavailable
+               and will indicate the status of the user.
+        """
+        user = self.request.get('from').split('/')[0]
+        im_from = datastore_types.IM('xmpp', user)
+        suspend = (available == 'unavailable')
+        query = Question.filter(Question.asker == im_from,
+                                Question.answer == None,
+                                Question.suspended == not suspend)
+        question = query.get()
+        if question:
+            question.suspended = suspend
+            question.put()
 
 
 class LatestHandler(webapp2.RequestHandler):
@@ -334,4 +362,5 @@ class LatestHandler(webapp2.RequestHandler):
 APPLICATION = webapp2.WSGIApplication([
         ('/', LatestHandler),
         ('/_ah/xmpp/message/chat/', XmppHandler),
+        ('/_ah/xmpp/presence/(available|unavailable)/', XmppPresenceHandler),
         ], debug=True)
