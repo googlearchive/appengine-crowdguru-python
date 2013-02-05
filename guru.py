@@ -331,7 +331,7 @@ class XmppPresenceHandler(webapp2.RequestHandler):
         suspend = (status == 'unavailable')
         query = Question.filter(Question.asker == im_from,
                                 Question.answer == None,
-                                Question.suspended == not suspend)
+                                Question.suspended == (not suspend))
         question = query.get()
         if question:
             question.suspended = suspend
