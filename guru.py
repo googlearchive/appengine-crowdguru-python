@@ -333,9 +333,9 @@ class XmppPresenceHandler(webapp2.RequestHandler):
         sender = self.request.get('from')
         im_from = datastore_types.IM('xmpp', bare_jid(sender))
         suspend = (status == 'unavailable')
-        query = Question.filter(Question.asker == im_from,
-                                Question.answer == None,
-                                Question.suspended == (not suspend))
+        query = Question.query(Question.asker == im_from,
+                               Question.answer == None,
+                               Question.suspended == (not suspend))
         question = query.get()
         if question:
             question.suspended = suspend
