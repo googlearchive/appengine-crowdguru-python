@@ -1,3 +1,9 @@
+![status: inactive](https://img.shields.io/badge/status-inactive-red.svg)
+
+This project is no longer actively developed or maintained.  
+
+For more information about App Engine, refer to our [documentation](https://cloud.google.com/appengine).
+
 # The Amazing Crowd Guru
 
 "The Amazing Crowd Guru" is an example application that covers all the basic
